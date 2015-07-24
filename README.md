@@ -1,6 +1,6 @@
 # Marlin for Molestock
 
-Marlin firmware mod for Molestock 3D printer (For more information visit www.e-mole.cz/molestock).
+Marlin firmware mod for Molestock 3D printer (For more informations visit www.e-mole.cz/molestock).
 
 <img src="http://www.e-mole.cz/sites/default/files/pictures/e-mole-molestock-3d_printer.jpg" alt="">
 
