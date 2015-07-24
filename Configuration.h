@@ -75,7 +75,7 @@
 #define DELTA_SEGMENTS_PER_SECOND 100 //was 180 and 200 resp, 100 is enought
 
 // Center-to-center distance of the holes in the diagonal push rods.
-#define DELTA_DIAGONAL_ROD 299 // 299 mm // 315.5 mm
+#define DELTA_DIAGONAL_ROD 298 // 299 mm // 315.5 mm
 
 // Horizontal offset from middle of printer to smooth rod center.
 #define DELTA_SMOOTH_ROD_OFFSET 192 // 191.75 // 192 // 191.5 mm //158
@@ -90,7 +90,7 @@
 #define DELTA_RADIUS (DELTA_SMOOTH_ROD_OFFSET-DELTA_EFFECTOR_OFFSET-DELTA_CARRIAGE_OFFSET)
 
 // Print surface diameter/2 minus unreachable space (avoid collisions with vertical towers).
-#define DELTA_PRINTABLE_RADIUS 130.0 // Should be 120 !!! For Z-probe push up zone testing set 145
+#define DELTA_PRINTABLE_RADIUS 120.0 // Should be 120 !!! For Z-probe push up zone testing set 145
 
 //TFs mod from R. Cattell
 //Tower Position Adjustment - Adj x Degrees around delta radius (- move clockwise / + move anticlockwise)
