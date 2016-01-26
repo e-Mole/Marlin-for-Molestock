@@ -75,16 +75,16 @@
 #define DELTA_SEGMENTS_PER_SECOND 100 //was 180 and 200 resp, 100 is enought
 
 // Center-to-center distance of the holes in the diagonal push rods.
-#define DELTA_DIAGONAL_ROD 298 // 299 mm // 315.5 mm
+#define DELTA_DIAGONAL_ROD 298.0 // 299 mm // 315.5 mm
 
 // Horizontal offset from middle of printer to smooth rod center.
-#define DELTA_SMOOTH_ROD_OFFSET 192 // 191.75 // 192 // 191.5 mm //158
+#define DELTA_SMOOTH_ROD_OFFSET 192.0 // 191.75 // 192 // 191.5 mm //158
 
 // Horizontal offset of the universal joints on the end effector.
-#define DELTA_EFFECTOR_OFFSET 30 // mm 
+#define DELTA_EFFECTOR_OFFSET 30.0 // mm 
 
 // Horizontal offset of the universal joints on the carriages.
-#define DELTA_CARRIAGE_OFFSET 27 //HIWIN 27 // IGUS 23.4 // mm, original 24.5 
+#define DELTA_CARRIAGE_OFFSET 27.0 //HIWIN 27 // IGUS 23.4 // mm, original 24.5 
 
 // Horizontal distance bridged by diagonal push rods when effector is centered.
 #define DELTA_RADIUS (DELTA_SMOOTH_ROD_OFFSET-DELTA_EFFECTOR_OFFSET-DELTA_CARRIAGE_OFFSET)
@@ -528,7 +528,7 @@ const bool FIL_RUNOUT_INVERTING = true;  // Should be uncommented and true or fa
 
 //// MOVEMENT SETTINGS
 #define NUM_AXIS 4 // The axis order in all axis related arrays is X, Y, Z, E
-#define HOMING_FEEDRATE {150*60, 150*60, 150*60, 0}  // set the homing speeds (mm/min)
+#define HOMING_FEEDRATE {120*60, 120*60, 120*60, 0}  // set the homing speeds (mm/min)
 
 // default settings
 
@@ -540,10 +540,10 @@ const bool FIL_RUNOUT_INVERTING = true;  // Should be uncommented and true or fa
 
 #define DEFAULT_AXIS_STEPS_PER_UNIT   {XYZ_STEPS, XYZ_STEPS, XYZ_STEPS, 147} //TFs base settings for E 147, 148.5, 150 or 294
 #define DEFAULT_MAX_FEEDRATE          {200, 200, 200, 200}    // (mm/sec)
-#define DEFAULT_MAX_ACCELERATION      {9000,9000,9000,9000}    // X, Y, Z, E maximum start speed for accelerated moves. E default values are good for skeinforge 40+, for older versions raise them a lot.
+#define DEFAULT_MAX_ACCELERATION      {9000,9000,9000,10000}    // X, Y, Z, E maximum start speed for accelerated moves. E default values are good for skeinforge 40+, for older versions raise them a lot.
 
-#define DEFAULT_ACCELERATION          1500    // X, Y, Z and E max acceleration in mm/s^2 for printing moves
-#define DEFAULT_RETRACT_ACCELERATION  3000   // X, Y, Z and E max acceleration in mm/s^2 for retracts
+#define DEFAULT_ACCELERATION          2000    //1500   // X, Y, Z and E max acceleration in mm/s^2 for printing moves
+#define DEFAULT_RETRACT_ACCELERATION  3000    //3000   // X, Y, Z and E max acceleration in mm/s^2 for retracts
 
 // Offset of the extruders (uncomment if using more than one and relying on firmware to position when changing).
 // The offset has to be X=0, Y=0 for the extruder 0 hotend (default extruder).
@@ -552,9 +552,9 @@ const bool FIL_RUNOUT_INVERTING = true;  // Should be uncommented and true or fa
 // #define EXTRUDER_OFFSET_Y {0.0, 5.00}  // (in mm) for each extruder, offset of the hotend on the Y axis
 
 // The speed change that does not require acceleration (i.e. the software might assume it can be done instantaneously)
-#define DEFAULT_XYJERK                20.0    // (mm/sec)
+#define DEFAULT_XYJERK                10.0    //20.0    // (mm/sec)
 #define DEFAULT_ZJERK                 20.0    // (mm/sec)
-#define DEFAULT_EJERK                 20.0    // (mm/sec)
+#define DEFAULT_EJERK                  5.0    //20.0    // (mm/sec)
 
 //===========================================================================
 //=============================Additional Features===========================
