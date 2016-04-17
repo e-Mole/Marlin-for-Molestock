@@ -202,6 +202,7 @@
 #ifdef SDSUPPORT
 CardReader card;
 #endif
+long ParkPauseMillis = -1; // prevents ParkPause from running unless printing has started // TFs experimental
 float homing_feedrate[] = HOMING_FEEDRATE;
 bool axis_relative_modes[] = AXIS_RELATIVE_MODES;
 int feedmultiply=100; //100->1 200->2
@@ -1596,6 +1597,7 @@ void process_commands()
     {
     case 0: // G0 -> G1
     case 1: // G1
+      if(ParkPauseMillis == -1) ParkPauseMillis = 0; // enables the ParkPause option after printing has started //TFs experimental
       if(Stopped == false) {
         get_coordinates(); // For X Y Z E F
           #ifdef FWRETRACT
@@ -3910,227 +3912,318 @@ case 404:  //M404 Enter the nominal filament width (3mm, 1.75mm ) N<3.0> or disp
       target[i] = lastpos[i] = current_position[i];
 
     #define BASICPLAN plan_buffer_line(target[X_AXIS], target[Y_AXIS], target[Z_AXIS], target[E_AXIS], fr60, active_extruder);
-    #define BASICPLANDELTA plan_buffer_line(delta[X_AXIS], delta[Y_AXIS], delta[Z_AXIS], target[E_AXIS], fr60, active_extruder);
+    //#define BASICPLANDELTA plan_buffer_line(delta[X_AXIS], delta[Y_AXIS], delta[Z_AXIS], target[E_AXIS], fr60, active_extruder); //not used in new delta code
+    
     #ifdef DELTA
-      #define RUNPLAN calculate_delta(target); BASICPLANDELTA
-	  SERIAL_ECHO('delta preruseni tisku - vymena filamentu');
+      //#define RUNPLAN calculate_delta(target); BASICPLANDELTA //not used in new delta code
+	    // SERIAL_ECHO('delta preruseni tisku - vymena filamentu');
     #else
       #define RUNPLAN BASICPLAN
     #endif
-    
-	SERIAL_ECHO('preruseni tisku - vymena filamentu'); 
-	
-    //retract by E
-    if (code_seen('E')) target[E_AXIS] += code_value();
-    #ifdef FILAMENTCHANGE_FIRSTRETRACT
-      else target[E_AXIS] += FILAMENTCHANGE_FIRSTRETRACT;
-    #endif
-
-    RUNPLAN;
-
-    //lift Z
-    if (code_seen('Z')) target[Z_AXIS] += code_value();
-    #ifdef FILAMENTCHANGE_ZADD
-      else target[Z_AXIS] += FILAMENTCHANGE_ZADD;
-    #endif
-
-    RUNPLAN;
-
-    //move xy
-    if (code_seen('X')) target[X_AXIS] = code_value();
-    #ifdef FILAMENTCHANGE_XPOS
-      else target[X_AXIS] = FILAMENTCHANGE_XPOS;
-    #endif
-
-    if (code_seen('Y')) target[Y_AXIS] = code_value();
-    #ifdef FILAMENTCHANGE_YPOS
-      else target[Y_AXIS] = FILAMENTCHANGE_YPOS;
-    #endif
-
-    RUNPLAN;
-
-    if (code_seen('L')) target[E_AXIS] += code_value();
-    #ifdef FILAMENTCHANGE_FINALRETRACT
-      else target[E_AXIS] += FILAMENTCHANGE_FINALRETRACT;
-    #endif
-
-    RUNPLAN;
-
-    //finish moves
-    st_synchronize();
-    //disable extruder steppers so filament can be removed
-    disable_e0();
-    disable_e1();
-    disable_e2();
-    //disable_e3();
-    delay(100);
-    LCD_ALERTMESSAGEPGM(MSG_FILAMENTCHANGE);
-    //uint8_t cnt = 0;
-    uint16_t  cnt = 0;
-    while (!lcd_clicked()) {
-      if (++cnt == 1) lcd_quick_feedback(); // every 256th frame till the lcd is clicked
-      manage_heater();
-      manage_inactivity(true);
-      lcd_update();
-    } // while(!lcd_clicked)
-
-    //return to normal
-    if (code_seen('L')) target[E_AXIS] -= code_value();
-    #ifdef FILAMENTCHANGE_FINALRETRACT
-      else target[E_AXIS] -= FILAMENTCHANGE_FINALRETRACT;
-    #endif
-
-    current_position[E_AXIS] = target[E_AXIS]; //the long retract of L is compensated by manual filament feeding
-    plan_set_e_position(current_position[E_AXIS]);
-
-    RUNPLAN; //should do nothing
-
-    lcd_reset_alert_level();
-    
-    LCD_ALERTMESSAGEPGM(MSG_PRINTING);
+    //SERIAL_ECHO('preruseni tisku - vymena filamentu'); 
     
     #ifdef DELTA
-      calculate_delta(lastpos);
-      plan_buffer_line(delta[X_AXIS], delta[Y_AXIS], delta[Z_AXIS], target[E_AXIS], fr60, active_extruder); //move xyz back
-      plan_buffer_line(delta[X_AXIS], delta[Y_AXIS], delta[Z_AXIS], lastpos[E_AXIS], fr60, active_extruder); //final untretract
+    //DELTA complet code
+      //retract by E
+          target[E_AXIS] += FILAMENTCHANGE_FIRSTRETRACT;
+          destination[E_AXIS] = target[E_AXIS];
+          prepare_move(); 
+  
+      //lift Z
+          target[Z_AXIS] += FILAMENTCHANGE_ZADD;
+          destination[Z_AXIS] = target[Z_AXIS];
+          prepare_move();  
+  
+      //move xy
+          target[X_AXIS] = FILAMENTCHANGE_XPOS;
+          target[Y_AXIS] = FILAMENTCHANGE_YPOS;       
+          destination[X_AXIS] = target[X_AXIS];
+          destination[Y_AXIS] = target[Y_AXIS];
+          destination[Z_AXIS] = target[Z_AXIS];
+          prepare_move();
+      
+      // final retract by E
+          target[E_AXIS] += FILAMENTCHANGE_FINALRETRACT;
+          destination[E_AXIS] = target[E_AXIS];
+          prepare_move();
+  
+      //finish moves
+      st_synchronize();
+      //disable extruder steppers so filament can be removed
+      disable_e0();
+      disable_e1();
+      disable_e2();
+      //disable_e3();
+      delay(100);
+      LCD_ALERTMESSAGEPGM(MSG_FILAMENTCHANGE);
+      LCD_MESSAGEPGM("Filament change START");
+      
+      uint16_t  cnt = 0;
+      while (!lcd_clicked()) {
+        if (++cnt == 1) lcd_quick_feedback(); // every 256th frame till the lcd is clicked
+        manage_heater();
+        manage_inactivity(true);
+        lcd_update();
+      } // while(!lcd_clicked)
+  
+      //return to normal
+      if (code_seen('L')) target[E_AXIS] -= code_value();
+      #ifdef FILAMENTCHANGE_FINALRETRACT
+        else target[E_AXIS] -= FILAMENTCHANGE_FINALRETRACT;
+      #endif
+  
+      current_position[E_AXIS] = lastpos[E_AXIS]; //the long retract of L is compensated by manual filament feeding
+      destination[E_AXIS] = lastpos[E_AXIS];
+      plan_set_e_position(current_position[E_AXIS]);
+      prepare_move(); //should do nothing  
+      // retract E before return to printing position
+      target[E_AXIS] += FILAMENTCHANGE_FIRSTRETRACT;
+      destination[E_AXIS] = target[E_AXIS];
+      prepare_move(); 
+  
+      lcd_reset_alert_level();
+      
+      //LCD_ALERTMESSAGEPGM(MSG_PRINTING);
+      LCD_MESSAGEPGM("Filament change O.K.");
+      
+      //move xy back
+            target[X_AXIS] = lastpos[X_AXIS];
+            target[Y_AXIS] = lastpos[Y_AXIS];
+            destination[X_AXIS] = target[X_AXIS];
+            destination[Y_AXIS] = target[Y_AXIS];
+            prepare_move();
+      //move z back
+            target[Z_AXIS] = lastpos[Z_AXIS];          
+            destination[Z_AXIS] = target[Z_AXIS];
+            prepare_move(); 
+      //move e back
+            target[E_AXIS] = lastpos[E_AXIS];          
+            destination[E_AXIS] = target[E_AXIS];
+            prepare_move();
+
+      LCD_ALERTMESSAGEPGM(MSG_PRINTING);      
+      LCD_MESSAGEPGM("Printing...");            
+          
     #else
-      plan_buffer_line(lastpos[X_AXIS], lastpos[Y_AXIS], target[Z_AXIS], target[E_AXIS], fr60, active_extruder); //move xy back
-      plan_buffer_line(lastpos[X_AXIS], lastpos[Y_AXIS], lastpos[Z_AXIS], target[E_AXIS], fr60, active_extruder); //move z back
-      plan_buffer_line(lastpos[X_AXIS], lastpos[Y_AXIS], lastpos[Z_AXIS], lastpos[E_AXIS], fr60, active_extruder); //final untretract
+    //CARTESIAN complet code
+      //retract by E
+      if (code_seen('E')) target[E_AXIS] += code_value();
+      #ifdef FILAMENTCHANGE_FIRSTRETRACT
+        else target[E_AXIS] += FILAMENTCHANGE_FIRSTRETRACT;
+      #endif
+  
+      RUNPLAN;
+  
+      //lift Z
+      if (code_seen('Z')) target[Z_AXIS] += code_value();
+      #ifdef FILAMENTCHANGE_ZADD
+        else target[Z_AXIS] += FILAMENTCHANGE_ZADD;
+      #endif
+  
+      RUNPLAN;
+  
+      //move xy
+      if (code_seen('X')) target[X_AXIS] = code_value();
+      #ifdef FILAMENTCHANGE_XPOS
+        else target[X_AXIS] = FILAMENTCHANGE_XPOS;
+      #endif
+  
+      if (code_seen('Y')) target[Y_AXIS] = code_value();
+      #ifdef FILAMENTCHANGE_YPOS
+        else target[Y_AXIS] = FILAMENTCHANGE_YPOS;
+      #endif
+  
+      RUNPLAN;
+  
+      if (code_seen('L')) target[E_AXIS] += code_value();
+      #ifdef FILAMENTCHANGE_FINALRETRACT
+        else target[E_AXIS] += FILAMENTCHANGE_FINALRETRACT;
+      #endif
+  
+      RUNPLAN;
+  
+      //finish moves
+      st_synchronize();
+      //disable extruder steppers so filament can be removed
+      disable_e0();
+      disable_e1();
+      disable_e2();
+      //disable_e3();
+      delay(100);
+      LCD_ALERTMESSAGEPGM(MSG_FILAMENTCHANGE);
+      //uint8_t cnt = 0;
+      uint16_t  cnt = 0;
+      while (!lcd_clicked()) {
+        if (++cnt == 1) lcd_quick_feedback(); // every 256th frame till the lcd is clicked
+        manage_heater();
+        manage_inactivity(true);
+        lcd_update();
+      } // while(!lcd_clicked)
+  
+      //return to normal
+      if (code_seen('L')) target[E_AXIS] -= code_value();
+      #ifdef FILAMENTCHANGE_FINALRETRACT
+        else target[E_AXIS] -= FILAMENTCHANGE_FINALRETRACT;
+      #endif
+  
+      current_position[E_AXIS] = target[E_AXIS]; //the long retract of L is compensated by manual filament feeding
+      plan_set_e_position(current_position[E_AXIS]);
+  
+      RUNPLAN; //should do nothing
+  
+      lcd_reset_alert_level();
+      
+      LCD_ALERTMESSAGEPGM(MSG_PRINTING);
+      
+        plan_buffer_line(lastpos[X_AXIS], lastpos[Y_AXIS], target[Z_AXIS], target[E_AXIS], fr60, active_extruder); //move xy back
+        plan_buffer_line(lastpos[X_AXIS], lastpos[Y_AXIS], lastpos[Z_AXIS], target[E_AXIS], fr60, active_extruder); //move z back
+        plan_buffer_line(lastpos[X_AXIS], lastpos[Y_AXIS], lastpos[Z_AXIS], lastpos[E_AXIS], fr60, active_extruder); //final untretract
+        
     #endif        
 
     #ifdef FILAMENT_RUNOUT_SENSOR
       filrunoutEnqueued = false;
     #endif
-            
-		/** old code  - replaced from new Marlin corrected code for delta
-		float target[4];
-        float lastpos[4];
-        target[X_AXIS]=current_position[X_AXIS];
-        target[Y_AXIS]=current_position[Y_AXIS];
-        target[Z_AXIS]=current_position[Z_AXIS];
-        target[E_AXIS]=current_position[E_AXIS];
-        lastpos[X_AXIS]=current_position[X_AXIS];
-        lastpos[Y_AXIS]=current_position[Y_AXIS];
-        lastpos[Z_AXIS]=current_position[Z_AXIS];
-        lastpos[E_AXIS]=current_position[E_AXIS];
-        //retract by E
-        if(code_seen('E'))
-        {
-          target[E_AXIS]+= code_value();
-        }
-        else
-        {
-          #ifdef FILAMENTCHANGE_FIRSTRETRACT
-            target[E_AXIS]+= FILAMENTCHANGE_FIRSTRETRACT ;
-          #endif
-        }
-        plan_buffer_line(target[X_AXIS], target[Y_AXIS], target[Z_AXIS], target[E_AXIS], feedrate/60, active_extruder);
-
-        //lift Z
-        if(code_seen('Z'))
-        {
-          target[Z_AXIS]+= code_value();
-        }
-        else
-        {
-          #ifdef FILAMENTCHANGE_ZADD
-            target[Z_AXIS]+= FILAMENTCHANGE_ZADD ;
-          #endif
-        }
-        plan_buffer_line(target[X_AXIS], target[Y_AXIS], target[Z_AXIS], target[E_AXIS], feedrate/60, active_extruder);
-
-        //move xy
-        if(code_seen('X'))
-        {
-          target[X_AXIS]+= code_value();
-        }
-        else
-        {
-          #ifdef FILAMENTCHANGE_XPOS
-            target[X_AXIS]= FILAMENTCHANGE_XPOS ;
-          #endif
-        }
-        if(code_seen('Y'))
-        {
-          target[Y_AXIS]= code_value();
-        }
-        else
-        {
-          #ifdef FILAMENTCHANGE_YPOS
-            target[Y_AXIS]= FILAMENTCHANGE_YPOS ;
-          #endif
-        }
-
-        plan_buffer_line(target[X_AXIS], target[Y_AXIS], target[Z_AXIS], target[E_AXIS], feedrate/60, active_extruder);
-
-        if(code_seen('L'))
-        {
-          target[E_AXIS]+= code_value();
-        }
-        else
-        {
-          #ifdef FILAMENTCHANGE_FINALRETRACT
-            target[E_AXIS]+= FILAMENTCHANGE_FINALRETRACT ;
-          #endif
-        }
-
-        plan_buffer_line(target[X_AXIS], target[Y_AXIS], target[Z_AXIS], target[E_AXIS], feedrate/60, active_extruder);
-
-        //finish moves
-        st_synchronize();
-        //disable extruder steppers so filament can be removed
-        disable_e0();
-        disable_e1();
-        disable_e2();
-        delay(100);
-        LCD_ALERTMESSAGEPGM(MSG_FILAMENTCHANGE);
-        uint8_t cnt=0;
-        while(!lcd_clicked()){
-          cnt++;
-          manage_heater();
-          manage_inactivity();
-          lcd_update();
-          if(cnt==0)
-          {
-          #if BEEPER > 0
-            SET_OUTPUT(BEEPER);
-
-            WRITE(BEEPER,HIGH);
-            delay(3);
-            WRITE(BEEPER,LOW);
-            delay(3);
-          #else
-			#if !defined(LCD_FEEDBACK_FREQUENCY_HZ) || !defined(LCD_FEEDBACK_FREQUENCY_DURATION_MS)
-              lcd_buzz(1000/6,100);
-			#else
-			  lcd_buzz(LCD_FEEDBACK_FREQUENCY_DURATION_MS,LCD_FEEDBACK_FREQUENCY_HZ);
-			#endif
-          #endif
-          }
-        }
-
-        //return to normal
-        if(code_seen('L'))
-        {
-          target[E_AXIS]+= -code_value();
-        }
-        else
-        {
-          #ifdef FILAMENTCHANGE_FINALRETRACT
-            target[E_AXIS]+=(-1)*FILAMENTCHANGE_FINALRETRACT ;
-          #endif
-        }
-        current_position[E_AXIS]=target[E_AXIS]; //the long retract of L is compensated by manual filament feeding
-        plan_set_e_position(current_position[E_AXIS]);
-        plan_buffer_line(target[X_AXIS], target[Y_AXIS], target[Z_AXIS], target[E_AXIS], feedrate/60, active_extruder); //should do nothing
-        plan_buffer_line(lastpos[X_AXIS], lastpos[Y_AXIS], target[Z_AXIS], target[E_AXIS], feedrate/60, active_extruder); //move xy back
-        plan_buffer_line(lastpos[X_AXIS], lastpos[Y_AXIS], lastpos[Z_AXIS], target[E_AXIS], feedrate/60, active_extruder); //move z back
-        plan_buffer_line(lastpos[X_AXIS], lastpos[Y_AXIS], lastpos[Z_AXIS], lastpos[E_AXIS], feedrate/60, active_extruder); //final untretract 
-		*/
     }
     break;
     #endif //FILAMENTCHANGEENABLE
+    
+    #ifdef EnableParkPause //TFs experimental - PARK-PAUSE ENABLED
+    case 6001: //custom ParkPause
+    // called from ParkPause function using : enquecommand_P(PSTR("M6001"));
+    {
+        LCD_MESSAGEPGM("ParkPause Init");
+        
+        float target[NUM_AXIS], lastpos[NUM_AXIS], fr100 = feedrate / 100;
+        for (int i=0; i<NUM_AXIS; i++)
+          target[i] = lastpos[i] = current_position[i];
+    
+        #define BASICPLAN plan_buffer_line(target[X_AXIS], target[Y_AXIS], target[Z_AXIS], target[E_AXIS], fr100, active_extruder);
+        //#define BASICPLANDELTA plan_buffer_line(delta[X_AXIS], delta[Y_AXIS], delta[Z_AXIS], target[E_AXIS], fr100, active_extruder); //not used in new delta code
+        #ifdef DELTA
+          //#define RUNPLAN calculate_delta(target); BASICPLANDELTA //not used in new delta code
+    	    //SERIAL_ECHO('delta preruseni tisku - alternativni STOP');
+        #else
+          #define RUNPLAN BASICPLAN
+        #endif
+	
+        //SERIAL_ECHO('preruseni tisku - alternativni STOP');         
+
+    #ifdef DELTA
+    //DELTA complet code 
+        //retract by E
+        target[E_AXIS] += FILAMENTCHANGE_FIRSTRETRACT;
+        destination[E_AXIS] = target[E_AXIS];
+        prepare_move(); 
+    
+        //lift Z
+        target[Z_AXIS] += FILAMENTCHANGE_ZADD;
+        destination[Z_AXIS] = target[Z_AXIS];
+        prepare_move();          
+    
+        //move xy
+        target[X_AXIS] = FILAMENTCHANGE_XPOS;
+        target[Y_AXIS] = FILAMENTCHANGE_YPOS;       
+        destination[X_AXIS] = target[X_AXIS];
+        destination[Y_AXIS] = target[Y_AXIS];
+        destination[Z_AXIS] = target[Z_AXIS];
+        prepare_move();
+
+        //finish moves
+        st_synchronize();
+        
+        LCD_MESSAGEPGM("ParkPause Done");
+        delay(100);
+        while(!lcd_clicked()){
+          manage_heater();
+          manage_inactivity();
+          lcd_update();
+        }
+
+        LCD_MESSAGEPGM("ParkPause Reset");
+        lcd_update();
+        ParkPauseMillis = 0;        
+
+        //return to normal   
+        lcd_reset_alert_level();
+
+          //move xy back
+          target[X_AXIS] = lastpos[X_AXIS];
+          target[Y_AXIS] = lastpos[Y_AXIS];
+          destination[X_AXIS] = target[X_AXIS];
+          destination[Y_AXIS] = target[Y_AXIS];
+          prepare_move();
+          //move z back
+          target[Z_AXIS] = lastpos[Z_AXIS];          
+          destination[Z_AXIS] = target[Z_AXIS];
+          prepare_move(); 
+          //move e back
+          target[E_AXIS] = lastpos[E_AXIS];          
+          destination[E_AXIS] = target[E_AXIS];
+          prepare_move();
+        
+        LCD_ALERTMESSAGEPGM(MSG_PRINTING);             
+              
+    #else
+    //CARTESIAN complet code
+        //retract by E
+        if (code_seen('E')) target[E_AXIS] += code_value();
+        #ifdef FILAMENTCHANGE_FIRSTRETRACT
+          else target[E_AXIS] += FILAMENTCHANGE_FIRSTRETRACT;
+        #endif
+    
+        RUNPLAN;
+    
+        //lift Z
+        if (code_seen('Z')) target[Z_AXIS] += code_value();
+        #ifdef FILAMENTCHANGE_ZADD
+          else target[Z_AXIS] += FILAMENTCHANGE_ZADD;
+        #endif
+    
+        RUNPLAN;
+    
+        //move xy
+        if (code_seen('X')) target[X_AXIS] = code_value();
+        #ifdef FILAMENTCHANGE_XPOS
+          else target[X_AXIS] = FILAMENTCHANGE_XPOS;
+        #endif
+    
+        if (code_seen('Y')) target[Y_AXIS] = code_value();
+        #ifdef FILAMENTCHANGE_YPOS
+          else target[Y_AXIS] = FILAMENTCHANGE_YPOS;
+        #endif
+    
+        RUNPLAN;
+       
+        //finish moves
+        st_synchronize();
+        
+        LCD_MESSAGEPGM("ParkPause Done");
+        delay(100);
+        while(!lcd_clicked()){
+          manage_heater();
+          manage_inactivity();
+          lcd_update();
+        }
+
+        LCD_MESSAGEPGM("ParkPause Reset");
+        lcd_update();
+        ParkPauseMillis = 0;        
+
+        //return to normal   
+        lcd_reset_alert_level();
+        
+        LCD_ALERTMESSAGEPGM(MSG_PRINTING);    
+    
+          plan_buffer_line(lastpos[X_AXIS], lastpos[Y_AXIS], target[Z_AXIS], target[E_AXIS], fr100, active_extruder); //move xy back
+          plan_buffer_line(lastpos[X_AXIS], lastpos[Y_AXIS], lastpos[Z_AXIS], target[E_AXIS], fr100, active_extruder); //move z back
+          plan_buffer_line(lastpos[X_AXIS], lastpos[Y_AXIS], lastpos[Z_AXIS], lastpos[E_AXIS], fr100, active_extruder); //final unretract
+              
+    #endif       
+    }
+    break;    
+    #endif //PARKPAUSE
+    
     #ifdef DUAL_X_CARRIAGE
     case 605: // Set dual x-carriage movement mode:
               //    M605 S0: Full control mode. The slicer has full control over x-carriage movement
@@ -4938,24 +5031,28 @@ void manage_inactivity(bool ignore_stepper_queue/*=false*/)
 
 void kill()
 {
-  cli(); // Stop interrupts
-  disable_heater();
-
-  disable_x();
-  disable_y();
-  disable_z();
-  disable_e0();
-  disable_e1();
-  disable_e2();
-
-#if defined(PS_ON_PIN) && PS_ON_PIN > -1
-  pinMode(PS_ON_PIN,INPUT);
-#endif
-  SERIAL_ERROR_START;
-  SERIAL_ERRORLNPGM(MSG_ERR_KILLED);
-  LCD_ALERTMESSAGEPGM(MSG_KILLED);
-  suicide();
-  while(1) { /* Intentionally left empty */ } // Wait for reset
+ #ifdef EnableParkPause  // check if the config option for ParkPause is enabled //TFs mod experimental
+    ParkPause();
+ #else                   // otherwise do the normal kill sequence
+    cli(); // Stop interrupts
+    disable_heater();
+  
+    disable_x();
+    disable_y();
+    disable_z();
+    disable_e0();
+    disable_e1();
+    disable_e2();
+  
+  #if defined(PS_ON_PIN) && PS_ON_PIN > -1
+    pinMode(PS_ON_PIN,INPUT);
+  #endif
+    SERIAL_ERROR_START;
+    SERIAL_ERRORLNPGM(MSG_ERR_KILLED);
+    LCD_ALERTMESSAGEPGM(MSG_KILLED);
+    suicide();
+    while(1) { /* Intentionally left empty */ } // Wait for reset
+ #endif  
 }
 
 //TFs mod (added from new Marlin)
@@ -4968,6 +5065,28 @@ void kill()
     }
   }
 #endif
+
+// ParkPause - add this function for the ParkPause // TFs mod experimental
+void ParkPause()
+{
+	// if the button was pressed sometime in the last 5 seconds, ignore this button press as it is likely to be part of the first button press.
+	if(ParkPauseMillis > 1){					
+		if(millis() <= (ParkPauseMillis + 3000)){
+			MYSERIAL.println("ParkPause Aborted - less than 10 seconds since last press");					
+			return;  // exit out of tis function and ignore the rest of the code in the function
+		}
+	}
+	
+	// otherwise if the button has not been pressed before, then ParkPause the printer
+	if(ParkPauseMillis == 0){
+
+		ParkPauseMillis = millis();
+		enquecommand_P(PSTR("M6001"));
+		return;  // exit out of tis function and ignore the rest of the code in the function
+
+	}
+		
+}
 
 void Stop()
 {
