@@ -3,6 +3,8 @@
 
 #include "boards.h"
 
+// LAST TFs CHANGE 2016-04-21
+
 // This configuration file contains the basic settings.
 // Advanced settings can be found in Configuration_adv.h
 // BASIC SETTINGS: select your board type, temperature sensor type, axis scaling, and endstop configuration
@@ -96,6 +98,14 @@
 #define DELTA_PRINTABLE_RADIUS 120.0 // Should be 120 !!! For Z-probe push up zone testing set 145
 
 //TFs mod from R. Cattell
+// Diameter of print bed - this is used to set the distance for manual calibration.
+#define BED_DIAMETER 220.0 // mm
+//Speed for calibration travel and probing moves
+#define AUTOCAL_TRAVELRATE 100 // mm/sec
+#define AUTOCAL_PROBERATE 10.0 // mm/sec
+//Amount to lift head after probing a point
+#define AUTOCAL_PROBELIFT 3.0 // mm
+
 //Tower Position Adjustment - Adj x Degrees around delta radius (- move clockwise / + move anticlockwise)
 #define TOWER_A_POSITION_ADJ 0 //Front Left Tower  - tower_adj[0]    A
 #define TOWER_B_POSITION_ADJ 0 //Front Right Tower - tower_adj[1]    B
@@ -193,7 +203,7 @@
 #define HEATER_0_MAXTEMP 285
 #define HEATER_1_MAXTEMP 285
 #define HEATER_2_MAXTEMP 285
-#define BED_MAXTEMP 125
+#define BED_MAXTEMP 120
 
 // If your bed has low resistance e.g. .6 ohm and throws the fuse you can duty cycle it to reduce the
 // average current. The value should be an integer and the heat bed will be turned on for 1 interval of
@@ -420,7 +430,7 @@ const bool FIL_RUNOUT_INVERTING = true;  // Should be uncommented and true or fa
 //============================= Bed Auto Leveling ===========================
 
 #define ENABLE_AUTO_BED_LEVELING // Delete the comment to enable (remove // at the start of the line)
-#define Z_PROBE_REPEATABILITY_TEST  // If not commented out, Z-Probe Repeatability test will be included if Auto Bed Leveling is Enabled.
+//#define Z_PROBE_REPEATABILITY_TEST  // TFs mod ->  If commented out, Z-Probe Repeatability test will be included if Auto Bed Leveling is Enabled on delta.
 //#define SAVE_G29_CORRECTION_MATRIX  // TFs mod - > if not commented out and the EEPROM is used to save settings, the G29 information will also be saved.
 
 #ifdef ENABLE_AUTO_BED_LEVELING
@@ -489,6 +499,8 @@ const bool FIL_RUNOUT_INVERTING = true;  // Should be uncommented and true or fa
 
   #define Z_RAISE_BEFORE_PROBING 100  //How much the extruder will be raised before traveling to the first probing point.
   #define Z_RAISE_BETWEEN_PROBINGS 5  //How much the extruder will be raised when traveling from between next probing points
+  
+  #define DELTA_CALIBRATION_ON // Uncomment to enable G30 command for deltas geometry calibration
 
   //#define Z_PROBE_SLED // turn on if you have a z-probe mounted on a sled like those designed by Charles Bell
   //#define SLED_DOCKING_OFFSET 5 // the extra distance the X axis must travel to pickup the sled. 0 should be fine but you can push it further if you'd like.

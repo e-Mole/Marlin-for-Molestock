@@ -185,6 +185,7 @@ void set_delta_constants();
 extern float delta_tower1_x,delta_tower1_y;
 extern float delta_tower2_x,delta_tower2_y;
 extern float delta_tower3_x,delta_tower3_y;
+void save_carriage_positions(int position_num);
 //END TFs mod
 
 void prepare_move_raw();
@@ -236,6 +237,7 @@ extern float delta_radius;
 extern float delta_diagonal_rod;
 extern float delta_segments_per_second;
 void recalc_delta_settings(float radius, float diagonal_rod);
+extern float z_offset;
 //TFs mod from Rich Cattell
   extern float tower_adj[6];
   extern float diagrod_adj[3];

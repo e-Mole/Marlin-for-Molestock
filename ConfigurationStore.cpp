@@ -414,6 +414,7 @@ void Config_ResetDefault()
 #endif
 #ifdef ENABLE_AUTO_BED_LEVELING
     zprobe_zoffset = -Z_PROBE_OFFSET_FROM_EXTRUDER;
+    z_offset = -zprobe_zoffset;
 #endif
 #ifdef DOGLCD
     lcd_contrast = DEFAULT_LCD_CONTRAST;

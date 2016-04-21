@@ -231,17 +231,30 @@ float endstop_adj[3]={0,0,0};
 #endif
 //TFs mod from R. Cattell
 #ifdef DELTA
+  float z_offset;
   float diagrod_adj[3]={0,0,0};
-  float tower_adj[6]={0,0,0,0,0,0};
+  float saved_endstop_adj[3]={0,0,0};
+  float tower_adj[6]={0,0,0,0,0,0};    
   float DELTA_DIAGONAL_ROD1_2;
   float DELTA_DIAGONAL_ROD2_2;
   float DELTA_DIAGONAL_ROD3_2;
   //float delta_tower1_x, delta_tower1_y;
   //float delta_tower2_x, delta_tower2_y;
   //float delta_tower3_x, delta_tower3_y;
+  float bed_radius = BED_DIAMETER / 2;
   float base_max_pos[3] = {X_MAX_POS, Y_MAX_POS, Z_MAX_POS};
   float base_home_pos[3] = {X_HOME_POS, Y_HOME_POS, Z_HOME_POS};
-  //float max_length[3] = {X_MAX_LENGTH, Y_MAX_LENGTH, Z_MAX_LENGTH};  
+  //float max_length[3] = {X_MAX_LENGTH, Y_MAX_LENGTH, Z_MAX_LENGTH};
+  float saved_position[3]={0.0,0.0,0.0};  
+  float saved_positions[7][3] = {
+    {0, 0, 0},
+    {0, 0, 0},
+    {0, 0, 0},
+    {0, 0, 0},
+    {0, 0, 0},
+    {0, 0, 0},
+    {0, 0, 0},
+    };    
 #endif
 
 float min_pos[3] = { X_MIN_POS, Y_MIN_POS, Z_MIN_POS };
@@ -395,6 +408,9 @@ static float delta[3] = {0.0, 0.0, 0.0};
 static float offset[3] = {0.0, 0.0, 0.0};
 static bool home_all_axis = true;
 static float feedrate = 1500.0, next_feedrate, saved_feedrate;
+static float bed_level_c, bed_level_x, bed_level_y, bed_level_z;
+static float bed_safe_z = 45; //used for inital bed probe safe distance (to avoid crashing into bed)
+static float bed_level_ox, bed_level_oy, bed_level_oz;
 static long gcode_N, gcode_LastN, Stopped_gcode_LastN = 0;
 
 static bool relative_mode = false;  //Determines Absolute or Relative Coordinates
@@ -1113,7 +1129,8 @@ static void run_z_probe() {
     float start_z = current_position[Z_AXIS];
     long start_steps = st_get_position(Z_AXIS);
 
-    feedrate = homing_feedrate[Z_AXIS]/4;
+    //feedrate = homing_feedrate[Z_AXIS]/4; //TFs mod
+    feedrate = homing_feedrate[Z_AXIS]/5;
     destination[Z_AXIS] = -10;
     prepare_move_raw();
     st_synchronize();
@@ -1584,6 +1601,293 @@ static void dock_sled(bool dock, int offset=0) {
 }
 #endif
 
+/*
+/ -----------------------------------------------
+/ Added form Rich Cattell Marlin mod (START)
+/ -----------------------------------------------
+*/
+//alternative z-probe for autocalibration
+float z_probe() {
+  feedrate = AUTOCAL_TRAVELRATE * 60;
+  prepare_move();
+  st_synchronize();
+  
+  enable_endstops(true);
+  float start_z = current_position[Z_AXIS];
+  long start_steps = st_get_position(Z_AXIS);
+
+  feedrate = AUTOCAL_PROBERATE * 60;
+  destination[Z_AXIS] = -20;
+  prepare_move_raw();
+  st_synchronize();
+  endstops_hit_on_purpose();
+
+  enable_endstops(false);
+  long stop_steps = st_get_position(Z_AXIS);
+  
+  //saved_position[X_AXIS] = float((st_get_position(X_AXIS)) / axis_steps_per_unit[X_AXIS]);
+  //saved_position[Y_AXIS] = float((st_get_position(Y_AXIS)) / axis_steps_per_unit[Y_AXIS]);
+  //saved_position[Z_AXIS] = float((st_get_position(Z_AXIS)) / axis_steps_per_unit[Z_AXIS]);
+
+  float mm = start_z -
+    float(start_steps - stop_steps) / axis_steps_per_unit[Z_AXIS];
+  current_position[Z_AXIS] = mm;
+  calculate_delta(current_position);
+  plan_set_position(delta[X_AXIS], delta[Y_AXIS], delta[Z_AXIS],
+		    current_position[E_AXIS]);
+
+  for(int8_t i=0; i < 3; i++) {
+    saved_position[i] = float(st_get_position(i) / axis_steps_per_unit[i]);
+    }
+    
+  destination[Z_AXIS] = mm + AUTOCAL_PROBELIFT;
+  prepare_move_raw();
+  st_synchronize();
+  return mm;
+}
+
+//Mode function, returning the mode or median
+float probe_mode(float *x,int n){
+  int i = 0;
+  int count = 0;
+  int maxCount = 0;
+  int prevCount = 0;
+  float mode = NULL;
+  int bimodal;
+ 
+  while(i<(n-1)){
+    count=0;
+    while(x[i]==x[i+1]){
+      count++;
+      i++;
+    }
+    if(count>0 & count>=maxCount){
+      mode=x[i];
+      if(count>maxCount){
+        bimodal=0;
+      }
+      prevCount=maxCount;
+      maxCount=count;
+    }
+    if(count>0 & prevCount==maxCount){//If the dataset has 2 or more modes.
+      bimodal=1;
+    }
+    if(count==0){
+      i++;
+    }
+   }
+   if(mode==NULL||bimodal==1){//Return the median if there is no mode.
+      mode=x[(n/2)];
+   }
+   return mode;
+}
+
+float probe_bed(float x, float y)
+  {
+  //Probe bed at specified location and return z height of bed
+  float probe_z, probe_bed_array[20];
+  int probe_count;
+  boolean probe_done;
+  saved_feedrate = feedrate;
+  //feedrate = homing_feedrate[Z_AXIS]; 
+  destination[X_AXIS] = x - X_PROBE_OFFSET_FROM_EXTRUDER;
+  destination[Y_AXIS] = y - Y_PROBE_OFFSET_FROM_EXTRUDER; 
+  
+  probe_count = 0;
+  do {
+    //probe_z = run_z_probe() + z_offset;
+    //run_z_probe();
+    //probe_z = current_position[Z_AXIS] + z_offset;
+    probe_z = z_probe() + z_offset;
+    probe_bed_array[probe_count] = probe_z;
+    probe_done = false;
+    if (probe_count > 0) 
+      {
+      for(int xx=0; xx < probe_count; xx++)
+        {
+        if (probe_bed_array[xx] == probe_z)
+           { 
+             probe_done = true;
+           }
+        /*
+        SERIAL_ECHO("probe_z=");
+        SERIAL_PROTOCOL_F(probe_z,5);
+        SERIAL_ECHO(" probe_bed_array[");
+        SERIAL_ECHO(xx);
+        SERIAL_ECHO("]=");
+        SERIAL_PROTOCOL_F(probe_bed_array[xx],5);
+        SERIAL_ECHOLN("");
+        */    
+        }
+      }
+    probe_count ++;
+    //SERIAL_PROTOCOL_F(probe_z,5);
+    //SERIAL_ECHOLN("");
+    } while ((probe_done == false) and (probe_count < 20));
+  
+  feedrate = saved_feedrate;
+  bed_safe_z = probe_z + 2;
+  return probe_z;
+  }
+
+void bed_probe_all()
+  {
+  //Do inital move to safe z level above bed
+  feedrate = homing_feedrate[Z_AXIS]; 
+  destination[Z_AXIS] = bed_safe_z;
+  prepare_move_raw();
+  st_synchronize();
+  
+  //Probe all bed positions & store carriage positions
+  bed_level_c = probe_bed(0.0, 0.0);      
+  save_carriage_positions(0);
+  //bed_safe_z = bed_level_c + 2;
+  //SERIAL_ECHOPAIR("6.bed_safe_z = ",bed_safe_z);
+  bed_level_z = probe_bed(0.0, bed_radius);
+  save_carriage_positions(1);
+  bed_level_oy = probe_bed(-SIN_60 * bed_radius, COS_60 * bed_radius);
+  save_carriage_positions(2);
+  bed_level_x = probe_bed(-SIN_60 * bed_radius, -COS_60 * bed_radius);
+  save_carriage_positions(3);
+  bed_level_oz = probe_bed(0.0, -bed_radius);
+  save_carriage_positions(4);
+  bed_level_y = probe_bed(SIN_60 * bed_radius, -COS_60 * bed_radius);
+  save_carriage_positions(5);
+  bed_level_ox = probe_bed(SIN_60 * bed_radius, COS_60 * bed_radius);
+  save_carriage_positions(6);    
+  }
+
+void calibration_report()
+  {
+  //Display Report
+  SERIAL_ECHOLN("|\tZ-Tower\t\t\tEndstop Offsets");
+
+  SERIAL_ECHO("| \t");
+  if (bed_level_z >=0) {SERIAL_ECHO(" ");}
+  SERIAL_PROTOCOL_F(bed_level_z, 4);
+  SERIAL_ECHOPAIR("\t\t\tX:",endstop_adj[0]);
+  SERIAL_ECHOPAIR(" Y:",endstop_adj[1]);
+  SERIAL_ECHOPAIR(" Z:",endstop_adj[2]);
+  SERIAL_ECHOLN("");
+
+  SERIAL_ECHO("| ");
+  SERIAL_PROTOCOL_F(bed_level_oy, 4);
+  //if (bed_level_oy >= 0) SERIAL_ECHO("\t");
+  SERIAL_ECHO("\t\t");
+  //if (bed_level_ox >= 0) SERIAL_ECHO(" ");
+  SERIAL_PROTOCOL_F(bed_level_ox, 4);
+  SERIAL_ECHO("\t\tTower Offsets");
+  SERIAL_ECHOLN("");
+  
+  SERIAL_PROTOCOLPGM("| \t");
+  if (bed_level_c >= 0) SERIAL_ECHO(" ");
+  SERIAL_PROTOCOL_F(bed_level_c,4);
+  SERIAL_ECHOPAIR("\t\t\tA:",tower_adj[0]);
+  SERIAL_ECHOPAIR(" b:",tower_adj[1]); // Either Repetier Host or ECHOPAIR barfs on the string containing "B"
+  SERIAL_ECHOPAIR(" C:",tower_adj[2]);
+  SERIAL_ECHOLN(" ");
+  
+  SERIAL_ECHO("| ");
+  SERIAL_PROTOCOL_F(bed_level_x, 4);
+  //if (bed_level_x >= 0) SERIAL_ECHO("\t");
+  SERIAL_ECHO("\t\t");
+  //if (bed_level_y >=0) SERIAL_ECHO("\t ");
+  SERIAL_PROTOCOL_F(bed_level_y, 4);
+  SERIAL_ECHOPAIR("\t\tI:",tower_adj[3]);
+  SERIAL_ECHOPAIR(" J:",tower_adj[4]);
+  SERIAL_ECHOPAIR(" K:",tower_adj[5]);
+  SERIAL_ECHOLN("");
+
+  SERIAL_PROTOCOLPGM("| \t");
+  if (bed_level_oz >=0) {SERIAL_ECHO(" ");}
+  SERIAL_PROTOCOL_F(bed_level_oz, 4);
+  SERIAL_PROTOCOLPGM("\t\t\tDelta Radius: ");
+  SERIAL_PROTOCOL_F(delta_radius, 4);
+  SERIAL_ECHOLN("");
+
+  SERIAL_ECHO("| X-Tower\t\tY-Tower\t\tDiagonal Rod: ");
+  SERIAL_PROTOCOL_F(delta_diagonal_rod, 4);
+  SERIAL_ECHOLN("");
+  SERIAL_ECHOLN("");
+}
+
+void save_carriage_positions(int position_num) {
+  for(int8_t i=0; i < 3; i++) {
+    saved_positions[position_num][i] = saved_position[i];    
+  }
+}
+
+//homing delta
+void home_delta_axis() {
+    //copy from G28 for delta code
+    #ifdef ENABLE_AUTO_BED_LEVELING
+       #ifndef SAVE_G29_CORRECTION_MATRIX
+          plan_bed_level_matrix.set_to_identity();  //Reset the plane ("erase" all leveling data)
+       #endif   
+    #endif //ENABLE_AUTO_BED_LEVELING
+    //TFs mod
+    #ifdef NONLINEAR_BED_LEVELING
+       //#ifndef SAVE_G29_CORRECTION_MATRIX
+          reset_bed_level();
+       //#endif    
+    #endif //NONLINEAR_BED_LEVELING
+
+      saved_feedrate = feedrate;
+      saved_feedmultiply = feedmultiply;
+      feedmultiply = 100;
+      previous_millis_cmd = millis();
+
+      enable_endstops(true);
+
+      for(int8_t i=0; i < NUM_AXIS; i++) {
+        destination[i] = current_position[i];
+      }
+      feedrate = 0.0;
+         
+          // A delta can only safely home all axis at the same time
+          // all axis have to home at the same time
+
+          // Move all carriages up together until the first endstop is hit.
+          current_position[X_AXIS] = 0;
+          current_position[Y_AXIS] = 0;
+          current_position[Z_AXIS] = 0;
+          plan_set_position(current_position[X_AXIS], current_position[Y_AXIS], current_position[Z_AXIS], current_position[E_AXIS]);
+
+          destination[X_AXIS] = 3 * Z_MAX_LENGTH;
+          destination[Y_AXIS] = 3 * Z_MAX_LENGTH;
+          destination[Z_AXIS] = 3 * Z_MAX_LENGTH;
+          feedrate = 1.732 * homing_feedrate[X_AXIS];
+          plan_buffer_line(destination[X_AXIS], destination[Y_AXIS], destination[Z_AXIS], destination[E_AXIS], feedrate/60, active_extruder);
+          st_synchronize();
+          endstops_hit_on_purpose();
+
+          current_position[X_AXIS] = destination[X_AXIS];
+          current_position[Y_AXIS] = destination[Y_AXIS];
+          current_position[Z_AXIS] = destination[Z_AXIS];
+
+          // take care of back off and rehome now we are all at the top
+          HOMEAXIS(X);
+          HOMEAXIS(Y);
+          HOMEAXIS(Z);
+
+          calculate_delta(current_position);
+          plan_set_position(delta[X_AXIS], delta[Y_AXIS], delta[Z_AXIS], current_position[E_AXIS]);
+
+      #ifdef ENDSTOPS_ONLY_FOR_HOMING
+        enable_endstops(false);
+      #endif
+
+      feedrate = saved_feedrate;
+      feedmultiply = saved_feedmultiply;
+      previous_millis_cmd = millis();
+      endstops_hit_on_purpose();
+}
+/*
+/ -----------------------------------------------
+/ Added form Rich Cattel Marlin mod (END)
+/ -----------------------------------------------
+*/
+
 void process_commands()
 {
   unsigned long codenum; //throw away variable
@@ -1966,7 +2270,8 @@ void process_commands()
             #ifdef NONLINEAR_BED_LEVELING
             //TFs mod to Z offset from menu
             // - float z_offset = Z_PROBE_OFFSET_FROM_EXTRUDER;
-            float z_offset = -zprobe_zoffset;
+            //float z_offset = -zprobe_zoffset;
+            z_offset = -zprobe_zoffset;
             if (code_seen(axis_codes[Z_AXIS])) {
               z_offset += code_value();
             }
@@ -2007,8 +2312,20 @@ void process_commands()
                 if (distance_from_center > DELTA_PROBABLE_RADIUS) continue;
                 #endif //DELTA
 
-                float measured_z = probe_pt(xProbe, yProbe, z_before);
-
+                //TFs mod - 5x probe repeating
+                #ifdef Z_PROBE_REPEATABILITY_TEST 
+                  float measured_a = probe_pt(xProbe, yProbe, z_before);
+                  float measured_b = probe_pt(xProbe, yProbe, z_before);
+                  float measured_c = probe_pt(xProbe, yProbe, z_before);
+                  float measured_d = probe_pt(xProbe, yProbe, z_before);
+                  float measured_e = probe_pt(xProbe, yProbe, z_before);
+                  //float measured_z = probe_pt(xProbe, yProbe, z_before); //TFs mod
+                  float measured_z = (measured_a + measured_b + measured_c + measured_d + measured_e)/5;
+                #else
+                  //original code
+                  float measured_z = probe_pt(xProbe, yProbe, z_before);
+                #endif
+                
                 #ifdef NONLINEAR_BED_LEVELING
                 bed_level[xCount][yCount] = measured_z + z_offset;
                 #endif //NONLINEAR_BED_LEVELING
@@ -2093,30 +2410,138 @@ void process_commands()
         LCD_MESSAGEPGM(MSG_G29_END);
         
         break;
-#ifndef Z_PROBE_SLED
-    case 30: // G30 Single Z Probe //TFs mod
+
+//TFs mod based on Rich Cattell code for delta calibration
+#ifdef DELTA_CALIBRATION_ON
+    case 30: // G30 calibration
         {
-            //engage_z_probe(); // Engage Z Servo endstop if available
-            st_synchronize();
-            // TODO: make sure the bed_level_rotation_matrix is identity or the planner will get set incorectly
-            setup_for_endstop_move();
+      //Zero the bed level array
+      for (int y = 0; y < 7; y++)
+        {
+        for (int x = 0; x < 7; x++)
+          {
+          bed_level[x][y] = 0.0;
+          }
+      }
+      
+       //save variables
+       saved_feedrate = feedrate;
+       saved_feedmultiply = feedmultiply;
+       feedmultiply = 100;
 
-            feedrate = homing_feedrate[Z_AXIS];
-
-            run_z_probe();
-            SERIAL_PROTOCOLPGM(MSG_BED);
-            SERIAL_PROTOCOLPGM(" X: ");
-            SERIAL_PROTOCOL(current_position[X_AXIS]);
-            SERIAL_PROTOCOLPGM(" Y: ");
-            SERIAL_PROTOCOL(current_position[Y_AXIS]);
-            SERIAL_PROTOCOLPGM(" Z: ");
-            SERIAL_PROTOCOL(current_position[Z_AXIS]);
-            SERIAL_PROTOCOLPGM("\n");
-
-            clean_up_after_endstop_move();
-            //retract_z_probe(); // Retract Z Servo endstop if available
-        }
+      if (code_seen('C'))
+        {
+        //Show carriage positions 
+        SERIAL_ECHOLN("Carriage Positions for last scan:");
+        for(int8_t i=0; i < 7; i++) 
+          {
+          SERIAL_ECHO("[");
+          SERIAL_ECHO(saved_positions[i][X_AXIS]);
+          SERIAL_ECHO(", ");
+          SERIAL_ECHO(saved_positions[i][Y_AXIS]);
+          SERIAL_ECHO(", ");
+          SERIAL_ECHO(saved_positions[i][Z_AXIS]);
+          SERIAL_ECHOLN("]");
+          }
         break;
+        }
+       if (code_seen('X') and code_seen('Y'))
+          {
+          //Probe specified X,Y point
+          float x = code_seen('X') ? code_value():0.00;
+          float y = code_seen('Y') ? code_value():0.00;
+          float probe_value;
+
+          //deploy_z_probe();
+          engage_z_probe();
+          //go to position X0 Y0 Z20
+          feedrate = AUTOCAL_TRAVELRATE * 60;
+          destination[X_AXIS] = 0;
+          destination[Y_AXIS] = 0;
+          destination[Z_AXIS] = 20;
+          prepare_move();
+          //finish moves
+          st_synchronize();
+          
+          //setup_for_endstop_move();
+          probe_value = probe_bed(x, y);
+          SERIAL_ECHO("Bed Z-Height at X:");
+          SERIAL_ECHO(x);
+          SERIAL_ECHO(" Y:");
+          SERIAL_ECHO(y);
+          SERIAL_ECHO(" = ");
+          SERIAL_PROTOCOL_F(probe_value, 4);
+          SERIAL_ECHOLN("");
+          
+          SERIAL_ECHO("Carriage Positions: [");
+          SERIAL_ECHO(saved_position[X_AXIS]);
+          SERIAL_ECHO(", ");
+          SERIAL_ECHO(saved_position[Y_AXIS]);
+          SERIAL_ECHO(", ");
+          SERIAL_ECHO(saved_position[Z_AXIS]);
+          SERIAL_ECHOLN("]");
+          //retract_z_probe();
+          retract_z_probe();
+          //Restore saved variables
+          feedrate = saved_feedrate;
+          feedmultiply = saved_feedmultiply;          
+          break;
+          }
+             
+       bed_safe_z = 20;
+       home_delta_axis();
+       //deploy_z_probe(); 
+       engage_z_probe();
+          
+          //go to position X0 Y0 Z20
+          feedrate = AUTOCAL_TRAVELRATE * 60;          
+          destination[X_AXIS] = 0;
+          destination[Y_AXIS] = 0;
+          destination[Z_AXIS] = 20;
+          prepare_move();
+          //finish moves
+          st_synchronize();       
+       
+       //setup_for_endstop_move();               
+       //Probe all points
+       bed_probe_all();
+      
+       //Show calibration report      
+       calibration_report();
+                  
+  	   // retract_z_probe();
+       retract_z_probe();
+ 
+       //Restore saved variables
+       feedrate = saved_feedrate;
+       feedmultiply = saved_feedmultiply;
+       }
+       break;
+
+// #elif !Z_PROBE_SLED && !DELTA_CALIBRATION_ON  //original "one point" code
+//     case 30: // G30 Single Z Probe //TFs mod
+//         {
+//             //engage_z_probe(); // Engage Z Servo endstop if available
+//             st_synchronize();
+//             // TODO: make sure the bed_level_rotation_matrix is identity or the planner will get set incorectly
+//             setup_for_endstop_move();
+// 
+//             feedrate = homing_feedrate[Z_AXIS];
+// 
+//             run_z_probe();
+//             SERIAL_PROTOCOLPGM(MSG_BED);
+//             SERIAL_PROTOCOLPGM(" X: ");
+//             SERIAL_PROTOCOL(current_position[X_AXIS]);
+//             SERIAL_PROTOCOLPGM(" Y: ");
+//             SERIAL_PROTOCOL(current_position[Y_AXIS]);
+//             SERIAL_PROTOCOLPGM(" Z: ");
+//             SERIAL_PROTOCOL(current_position[Z_AXIS]);
+//             SERIAL_PROTOCOLPGM("\n");
+// 
+//             clean_up_after_endstop_move();
+//             //retract_z_probe(); // Retract Z Servo endstop if available
+//         }
+//         break;
 #else
     case 31: // dock the sled
         dock_sled(true);
