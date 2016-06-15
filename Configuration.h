@@ -430,7 +430,7 @@ const bool FIL_RUNOUT_INVERTING = true;  // Should be uncommented and true or fa
 //============================= Bed Auto Leveling ===========================
 
 #define ENABLE_AUTO_BED_LEVELING // Delete the comment to enable (remove // at the start of the line)
-//#define Z_PROBE_REPEATABILITY_TEST  // TFs mod ->  If commented out, Z-Probe Repeatability test will be included if Auto Bed Leveling is Enabled on delta.
+#define Z_PROBE_REPEATABILITY_TEST  // TFs mod ->  If commented out, Z-Probe Repeatability test will be included after "G29 M" command if Auto Bed Leveling is Enabled on delta.
 //#define SAVE_G29_CORRECTION_MATRIX  // TFs mod - > if not commented out and the EEPROM is used to save settings, the G29 information will also be saved.
 
 #ifdef ENABLE_AUTO_BED_LEVELING
