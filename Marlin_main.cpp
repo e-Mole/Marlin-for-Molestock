@@ -2313,17 +2313,23 @@ void process_commands()
                 #endif //DELTA
 
                 //TFs mod - 5x probe repeating
-                #ifdef Z_PROBE_REPEATABILITY_TEST 
+                #ifndef Z_PROBE_REPEATABILITY_TEST 
+                  //original code
+                  float measured_z = probe_pt(xProbe, yProbe, z_before);
+                #else
+                 float measured_z = 0;
+                 if (code_seen('M')){ 
                   float measured_a = probe_pt(xProbe, yProbe, z_before);
                   float measured_b = probe_pt(xProbe, yProbe, z_before);
                   float measured_c = probe_pt(xProbe, yProbe, z_before);
                   float measured_d = probe_pt(xProbe, yProbe, z_before);
                   float measured_e = probe_pt(xProbe, yProbe, z_before);
                   //float measured_z = probe_pt(xProbe, yProbe, z_before); //TFs mod
-                  float measured_z = (measured_a + measured_b + measured_c + measured_d + measured_e)/5;
-                #else
+                  measured_z = (measured_a + measured_b + measured_c + measured_d + measured_e)/5;
+                 } else {
                   //original code
-                  float measured_z = probe_pt(xProbe, yProbe, z_before);
+                  measured_z = probe_pt(xProbe, yProbe, z_before);                  
+                 }                  
                 #endif
                 
                 #ifdef NONLINEAR_BED_LEVELING
