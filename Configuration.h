@@ -3,7 +3,7 @@
 
 #include "boards.h"
 
-// LAST TFs CHANGE 2016-06-15
+// LAST TFs CHANGE 2016-09-24
 
 // This configuration file contains the basic settings.
 // Advanced settings can be found in Configuration_adv.h

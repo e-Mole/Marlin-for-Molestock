@@ -741,16 +741,16 @@ void get_command()
     serial_char = MYSERIAL.read();
     if(serial_char == '\n' ||
        serial_char == '\r' ||
-       (serial_char == ':' && comment_mode == false) ||
-       serial_count >= (MAX_CMD_SIZE - 1) )
+       serial_count >= (MAX_CMD_SIZE - 1))
     {
       if(!serial_count) { //if empty line
         comment_mode = false; //for new command
         return;
-      }
-      cmdbuffer[bufindw][serial_count] = 0; //terminate string
+      }	  
+	  cmdbuffer[bufindw][serial_count] = 0; //terminate string	  
       if(!comment_mode){
-        comment_mode = false; //for new command
+        //TFs mod
+		//comment_mode = false; //for new command
         fromsd[bufindw] = false;
         if(strchr(cmdbuffer[bufindw], 'N') != NULL)
         {
@@ -834,8 +834,17 @@ void get_command()
       }
       serial_count = 0; //clear buffer
     }
-    else
-    {
+    else if (serial_char == '\\') {
+	//Handle escapes
+       if(MYSERIAL.available() > 0  && buflen < BUFSIZE) {
+         // if we have one more character, copy it over
+          MYSERIAL.read();
+          cmdbuffer[bufindw][serial_count++] = serial_char;
+       }
+       //otherwise do nothing        
+    }
+    else 
+    { // its not a newline, carriage return or escape char
       if(serial_char == ';') comment_mode = true;
       if(!comment_mode) cmdbuffer[bufindw][serial_count++] = serial_char;
     }
@@ -858,7 +867,7 @@ void get_command()
     if(serial_char == '\n' ||
        serial_char == '\r' ||
        (serial_char == '#' && comment_mode == false) ||
-       (serial_char == ':' && comment_mode == false) ||
+       //(serial_char == ':' && comment_mode == false) ||
        serial_count >= (MAX_CMD_SIZE - 1)||n==-1)
     {
       if(card.eof()){
@@ -882,7 +891,7 @@ void get_command()
 
       if(!serial_count)
       {
-        comment_mode = false; //for new command
+		comment_mode = false; //for new command
         return; //if empty line
       }
       cmdbuffer[bufindw][serial_count] = 0; //terminate string
@@ -4353,6 +4362,11 @@ case 404:  //M404 Enter the nominal filament width (3mm, 1.75mm ) N<3.0> or disp
     #endif
     //SERIAL_ECHO('preruseni tisku - vymena filamentu'); 
     
+	//TFs add: Switch filament runout state for ignoring sensor state change
+    #ifdef FILAMENT_RUNOUT_SENSOR
+      filrunoutEnqueued = true;
+    #endif
+	
     #ifdef DELTA
     //DELTA complet code
       //retract by E
