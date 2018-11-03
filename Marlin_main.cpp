@@ -1929,7 +1929,8 @@ void process_commands()
         //ClearToSend();
       }
       break;
-#ifndef SCARA //disable arc support
+#ifndef SCARA //disable arc support for scara
+ #ifndef DELTA //disable arc support for delta
     case 2: // G2  - CW ARC
       if(Stopped == false) {
         get_arc_coordinates();
@@ -1942,6 +1943,7 @@ void process_commands()
         prepare_arc_move(false);
       }
       break;
+ #endif	  
 #endif
     case 4: // G4 dwell
       LCD_MESSAGEPGM(MSG_DWELL);
